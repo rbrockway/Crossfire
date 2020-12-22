@@ -1,0 +1,13 @@
+#!/bin/bash
+
+echo "Fixing tile paths for the world"
+echo
+for X in $(seq -w 100 999)
+do
+	for Y in $(seq -w 100 999)
+	do
+		MAP=world\_$X\_$Y
+		echo "Processing map $MAP"
+		~/bin/fix_tile_paths $MAP
+	done
+done

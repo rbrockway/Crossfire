@@ -1,0 +1,48 @@
+#!/bin/bash
+
+#
+# Config
+#
+TILENAME=tile
+
+#
+# Main
+#
+echo "Fixing tile paths for the worldtree"
+echo
+for X in $(seq -w 000 999)
+do
+	if [ ! -d $X ]
+	then
+		mkdir $X
+	fi
+	if [ -d $X ]
+	then
+		cd $X
+		for Y in $(seq -w 000 999)
+		do
+			if [ ! -d $Y ]
+			then
+				mkdir $Y
+			fi
+
+			if [ -d $Y ]
+			then
+				cd $Y
+				if [ -f ../../world_${X}_${Y} ]
+				then
+					echo "Moving world_${X}_${Y} to $X/$Y/$TILENAME"
+					mv ../../world_${X}_${Y} $TILENAME
+				else
+					echo "$X/$Y/$TILENAME already present"
+				fi
+				cd ..
+			else
+				echo "Column $Y does not exist"
+			fi
+		done
+		cd ..
+	else
+		echo "Row $X does not exist"
+	fi
+done

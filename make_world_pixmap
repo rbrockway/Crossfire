@@ -1,0 +1,339 @@
+#!/bin/bash
+
+#
+# Robert Brockway
+# November 9, 2016
+#
+# This script makes assumptions about the tile maps being 50x50
+#
+# $1: x start
+# $2: y start
+# $3: x size
+# $4: y size
+# $5: scale
+# $6: skip reinitialising tmp files (skip, noskip*)
+#
+# * Default
+#
+
+#
+# The best solution is probably to build an array.
+# http://www.thegeekstuff.com/2010/06/bash-array-tutorial/
+# Absolute coordinate for rcCell 10,15 on map 120,123 would be 120*50+10,123*50+15
+#
+
+#
+# Config
+#
+MAPBASE=/home/cfserv/code/maps/trunk
+
+#
+# Initialise
+#
+
+case $5 in
+4)
+	SCALE=4
+	;;
+10)
+	SCALE=10
+	;;
+20)
+	SCALE=20
+	;;
+100)
+	SCALE=100
+	;;
+*)
+	SCALE=4
+	;;
+esac
+
+case $SCALE in
+4)
+	XCELLRANGE="0 25"
+	YCELLRANGE="0 25"
+	;;
+10)
+	XCELLRANGE="0 9 19 29 39"
+	YCELLRANGE="0 9 19 29 39"
+	;;
+20)
+	XCELLRANGE="0 4 9 14 19 24 29 34 39"
+	YCELLRANGE="0 4 9 14 19 24 29 34 39"
+	;;
+100)
+	XCELLRANGE=$(seq 0 49)
+	YCELLRANGE=$(seq 0 49)
+	;;
+esac
+
+TIMESTAMP=$(date +%s)
+TMPPIXMAP=/tmp/make_world_pixmap.$TIMESTAMP.$$.ppm
+TMPCSV1=/tmp/make_world_pixmap.tmp1.csv
+TMPCSV2=/tmp/make_world_pixmap.tmp2.csv
+DATASTORE=/var/tmp/quadra/$SCALE/csv
+
+echo "TMPCSV1 file is" $TMPCSV1
+echo "TMPCSV2 file is" $TMPCSV2
+
+XCELLSIZE=$(echo $XCELLRANGE | wc -w)
+YCELLSIZE=$(echo $YCELLRANGE | wc -w)
+CELLTOTAL=$(( $XCELLSIZE * $YCELLSIZE ))
+
+#
+# Functions
+#
+
+# processMap
+processMap()
+{
+	echo "Processing Quadra map $(printf "%03d\n" $XMAP),$(printf "%03d\n" $YMAP)"
+	for XCELL in $XCELLRANGE
+	do
+		for YCELL in $YCELLRANGE
+		do
+			CELLELEVATION=$(cat $MAP | grep -C2 "x $XCELL" | grep -A50 "y $YCELL" | grep -m1 elevation | cut -d " " -f 2)
+
+			COBBLESTONES=$(cat $MAP | grep cobblestones | wc -l)
+			if [ $COBBLESTONES -gt 0 ]
+			then
+				CELLELEVATION=50001
+			fi
+
+			# Make sure we don't have a null result
+			# This represents a manmade structure
+			if [ -z $CELLELEVATION ]
+			then
+				CELLELEVATION=50002
+			fi
+
+			echo "$XMAP,$YMAP,$XCELL,$YCELL,$CELLELEVATION" >> $DATASTORE/$XMAP/$YMAP/csv
+		done
+	done
+
+	# If the map includes manmade structures it will be marked black later
+}
+
+
+
+#
+# Main
+#
+
+if [ ! -d $DATASTORE ]
+then
+	mkdir -p $DATASTORE
+fi
+
+case $1 in
+"")
+        XBOXSTART=100
+        ;;
+*)
+        XBOXSTART=$1
+        ;;
+esac
+
+case $2 in
+"")
+        YBOXSTART=100
+        ;;
+*)
+        YBOXSTART=$2
+        ;;
+esac
+
+case $3 in
+"")
+        XBOXSIZE=0
+        ;;
+*)
+        XBOXSIZE=$3
+        ;;
+esac
+
+case $4 in
+"")
+        YBOXSIZE=0
+        ;;
+*)
+        YBOXSIZE=$4
+        ;;
+esac
+
+case $6 in
+skip)
+        INITTMPFILES=no
+        ;;
+noskip)
+        INITTMPFILES=yes
+        ;;
+*)
+        INITTMPFILES=yes
+        ;;
+esac
+
+echo
+echo "***************"
+echo "Processing Data"
+echo "***************"
+echo
+
+XBOXEND=$(($XBOXSTART+$XBOXSIZE))
+YBOXEND=$(($YBOXSTART+$YBOXSIZE))
+
+case $INITTMPFILES in
+no)
+	echo "Using existing tmp files"
+	;;
+yes)
+	echo "Reinitialising existing tmp files"
+	>$TMPCSV1
+	>$TMPCSV2
+
+	for XMAP in $(seq $XBOXSTART $XBOXEND)
+	do
+		for YMAP in $(seq $YBOXSTART $YBOXEND)
+		do
+			MAP=$MAPBASE/worlds/quadra/$(printf "%03d\n" $XMAP)/$(printf "%03d\n" $YMAP)/tile
+			if [ ! -d $DATASTORE/$XMAP/$YMAP ]
+			then
+				mkdir -p $DATASTORE/$XMAP/$YMAP
+			fi
+
+			if [ -f $DATASTORE/$XMAP/$YMAP/csv ]
+			then
+				MAPLINECOUNT=$(cat $DATASTORE/$XMAP/$YMAP/csv | wc -l)
+			
+				if [ $MAPLINECOUNT -ne $CELLTOTAL ]
+				then
+					processMap
+				else
+					echo "Quadra map $XMAP,$YMAP exists and has passed integrity test"
+				fi
+			else
+				processMap
+			fi
+			cat $DATASTORE/$XMAP/$YMAP/csv >> $TMPCSV1
+		done
+	done
+	cat $TMPCSV1 | sort -t , -n -k2,2 -k 4,4 -k 1,1 -k 3,3 > $TMPCSV2
+	;;
+esac
+
+echo
+echo "**************"
+echo "Generating Map"
+echo "**************"
+echo
+
+FINALPIXMAP=/var/tmp/world_pixmap.$XBOXSTART.$YBOXSTART.$XBOXEND.$YBOXEND.$SCALE.$TIMESTAMP.ppm
+
+if [ -f $FINALPIXMAP ]
+then
+	echo "Map $FINALPIXMAP already exists"
+else
+	XCOUNT=$((($XBOXSIZE+1)*$XCELLSIZE))
+	YCOUNT=$((($YBOXSIZE+1)*$YCELLSIZE))
+
+	# http://stackoverflow.com/questions/9471101/sort-csv-file-by-column-priority-using-the-sort-command
+	# http://stackoverflow.com/questions/3193720/unix-sorting-with-primary-and-secondary-keys
+	# http://ss64.com/bash/sort.html
+	echo P3 >> $TMPPIXMAP
+	echo "# FINALPIXMAP" >> $TMPPIXMAP
+	echo "$XCOUNT $YCOUNT" >> $TMPPIXMAP
+	echo "15" >> $TMPPIXMAP
+
+	cat $TMPCSV2 | while read LINE
+	do
+		# do something with $LINE here
+		XMAP=$(echo $LINE | cut -d , -f 1)
+		YMAP=$(echo $LINE | cut -d , -f 2)
+		CELLELEVATION=$(echo $LINE | cut -d , -f 5)
+
+		if [ $CELLELEVATION -eq 50002 ]
+		then
+			# Black - cobblestones, manmade
+			echo "0 0 0" >> $TMPPIXMAP
+		elif [ $CELLELEVATION -eq 50001 ]
+		then
+			# Black - cobblestones, manmade
+			echo "0 0 0" >> $TMPPIXMAP
+		elif [ $XMAP -eq 100 ]
+		then
+			echo "12 12 12" >> $TMPPIXMAP
+		elif [ $XMAP -eq 200 ]
+		then
+			echo "12 12 12" >> $TMPPIXMAP
+		elif [ $XMAP -eq 300 ]
+		then
+			echo "12 12 12" >> $TMPPIXMAP
+		elif [ $XMAP -eq 400 ]
+		then
+			echo "12 12 12" >> $TMPPIXMAP
+		elif [ $XMAP -eq 500 ]
+		then
+			echo "12 12 12" >> $TMPPIXMAP
+		elif [ $XMAP -eq 600 ]
+		then
+			echo "12 12 12" >> $TMPPIXMAP
+		elif [ $XMAP -eq 700 ]
+		then
+			echo "12 12 12" >> $TMPPIXMAP
+		elif [ $XMAP -eq 800 ]
+		then
+			echo "12 12 12" >> $TMPPIXMAP
+		elif [ $XMAP -eq 900 ]
+		then
+			echo "12 12 12" >> $TMPPIXMAP
+		elif [ $YMAP -eq 100 ]
+		then
+			echo "12 12 12" >> $TMPPIXMAP
+		elif [ $YMAP -eq 200 ]
+		then
+			echo "12 12 12" >> $TMPPIXMAP
+		elif [ $YMAP -eq 300 ]
+		then
+			echo "12 12 12" >> $TMPPIXMAP
+		elif [ $YMAP -eq 400 ]
+		then
+			echo "12 12 12" >> $TMPPIXMAP
+		elif [ $YMAP -eq 500 ]
+		then
+			echo "12 12 12" >> $TMPPIXMAP
+		elif [ $YMAP -eq 600 ]
+		then
+			echo "12 12 12" >> $TMPPIXMAP
+		elif [ $YMAP -eq 700 ]
+		then
+			echo "12 12 12" >> $TMPPIXMAP
+		elif [ $YMAP -eq 800 ]
+		then
+			echo "12 12 12" >> $TMPPIXMAP
+		elif [ $YMAP -eq 900 ]
+		then
+			echo "12 12 12" >> $TMPPIXMAP
+		elif [ $CELLELEVATION -gt 12000 ]
+		then
+			# White mountains
+			echo "15 15 15" >> $TMPPIXMAP
+		elif [ $CELLELEVATION -gt 0 ]
+		then
+			# Green ground
+			echo "0 15 0" >> $TMPPIXMAP
+		elif [ $CELLELEVATION -eq 0 ]
+		then
+			# Black - manmade
+			# This can be removed next time the csv files are regenerated 17/11/2016
+			echo "0 0 0" >> $TMPPIXMAP
+		else
+			# Water
+			echo "0 0 15" >> $TMPPIXMAP
+		fi
+	done
+
+	mv $TMPPIXMAP $FINALPIXMAP
+	echo "Map generated:" $FINALPIXMAP
+fi
+

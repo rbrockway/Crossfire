@@ -1,0 +1,126 @@
+#!/bin/bash
+
+#
+# This script will fix tile paths for tile maps
+#
+# Assumes the map is in the current working directary and is called 'tile'.
+#
+# The script will make sure that tile maps for existing adjacent
+# tiles are present and correct and all others are absent
+#
+
+#
+# Config
+#
+TILENAME=tile
+
+#
+# Functions
+#
+
+error()
+{
+case $1 in
+	20)
+		echo
+		echo "Specified map $THISMAP does not exist"
+		;;
+	esac
+	echo
+	exit $1
+}
+
+process()
+{
+	TIMESTAMP=$(date +%s)
+
+	THISMAP=$1
+	if [ ! -f $THISMAP ]
+	then
+		error 20
+	fi
+
+	#echo
+	#echo "Processing map $THISMAP"
+	#echo
+
+	MAPCLASS=$(realpath $THISMAP | cut -f 6 -d /)
+	XCOORD=$(realpath $THISMAP | cut -f 7 -d /)
+	YCOORD=$(realpath $THISMAP | cut -f 8 -d /)
+
+	# Remove all existing references to adjacent tiles so we know what state the file is in
+	sed -i '/tile_path_1/d' $THISMAP &> /dev/null
+        sed -i '/tile_path_2/d' $THISMAP &> /dev/null
+        sed -i '/tile_path_3/d' $THISMAP &> /dev/null
+        sed -i '/tile_path_4/d' $THISMAP &> /dev/null
+
+	# North
+	if [ $YCOORD -gt 100 ]
+	then
+		ADJACENT1="../../$XCOORD/$(($YCOORD-1))/$TILENAME"
+	fi
+
+	# East
+	if [ $XCOORD -le 999 ]
+	then
+		ADJACENT2="../../$(($XCOORD+1))/$YCOORD/$TILENAME"
+	fi
+
+	# South
+	if [ $YCOORD -le 999 ]
+	then
+		ADJACENT3="../../$XCOORD/$(($YCOORD+1))/$TILENAME"
+	fi
+
+	# West
+	if [ $XCOORD -gt 100 ]
+	then
+		ADJACENT4="../../$(($XCOORD-1))/$YCOORD/$TILENAME"
+	fi
+
+	if [ -f $ADJACENT4 ]
+	then
+		#echo "Adding tile_path_4 $ADJACENT4"
+		#echo
+		sed -i "/outdoor 1/a tile_path_4 $ADJACENT4" $THISMAP &> /dev/null
+	else
+		echo "tile_path_4 not being added as $ADJACENT4 does not exist"
+	fi
+
+	if [ -f $ADJACENT3 ]
+	then
+		#echo "Adding tile_path_3 $ADJACENT3"
+		#echo
+		sed -i "/outdoor 1/a tile_path_3 $ADJACENT3" $THISMAP &> /dev/null
+	else
+		echo "tile_path_3 not being added as $ADJACENT3 does not exist"
+	fi
+
+	if [ -f $ADJACENT2 ]
+	then
+		#echo "Adding tile_path_2 $ADJACENT2"
+		#echo
+		sed -i "/outdoor 1/a tile_path_2 $ADJACENT2" $THISMAP &> /dev/null
+	else
+		echo "tile_path_2 not being added as $ADJACENT2 does not exist"
+	fi
+
+	if [ -f $ADJACENT1 ]
+	then
+		#echo "Adding tile_path_1 $ADJACENT1"
+		#echo
+		sed -i "/outdoor 1/a tile_path_1 $ADJACENT1" $THISMAP &> /dev/null
+	else
+		echo "tile_path_1 not being added as $ADJACENT1 does not exist"
+	fi
+
+	#echo
+	#echo "*******************************"
+
+}
+
+#
+# Main
+#
+
+process $TILENAME

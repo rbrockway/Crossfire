@@ -1,0 +1,86 @@
+#!/bin/bash
+
+#
+# Robert Brockway
+#
+# Oct 21, 2016
+#
+# $1: X start map
+# $2: Y start map
+# $3: Direction (east or south)
+# $4: Number of maps in that direction
+#
+# Rollback a line of maps in an east or south direction to their original version
+#
+
+#
+# Initialise
+#
+
+# Timestamp used for backups
+TIMESTAMP=$(date +%s)
+
+# Base of all maps in Quadra
+QUADRABASE=/home/cfserv/code/maps/trunk/worlds/quadra
+
+# What we are replacing terrain with
+ROADARCH="arch cobblestones"
+
+#
+# Functions
+#
+
+# restoreMap
+restoreMap()
+{
+	# $1: X Coordinate of map
+	# $2: Y Coordinate of map
+	# $3: Direction (east or south)
+	# $4: Width of road
+
+
+	OLDMAP=tile.$TIMESTAMP
+
+	cd $QUADRABASE/$1/$2
+
+	# Backup old map
+	cp tile $OLDMAP
+
+	# Archive old map.  Also makes sure there is at least one backup at all times.
+	xz -k -9 $OLDMAP
+
+	echo "Restoring map $1,$2"
+	ORIGINALMAP=$(ls -1 tile.*.xz | head -n 1)
+	RESTOREMAP=$(echo $ORIGINALMAP | cut -d . -f 1-2)
+
+	# We keep the original compressed version
+	if [ ! -f $RESTOREMAP ]
+	then
+		xz -k -d $ORIGINALMAP
+	fi
+
+	cp $RESTOREMAP tile
+}
+
+#
+# Main
+#
+
+case $3 in
+east)
+	FIRST=$1
+	LAST=$(($1+$4))
+	for I in $(seq $FIRST $LAST)
+	do
+		restoreMap $I $2 $3
+	done
+	;;
+south)
+	FIRST=$2
+	LAST=$(($2+$4))
+	for J in $(seq $FIRST $LAST)
+	do
+		restoreMap $1 $J $3
+	done
+	;;
+esac

@@ -1,0 +1,7 @@
+#!/bin/bash
+
+cd ~/code/server/trunk
+make clean
+sh autogen.sh --enable-mapper --enable-cfrhg --enable-logger --enable-newspaper --disable-check
+make
+#sh autogen.sh --enable-mapper --enable-cfrhg --enable-logger --enable-newspaper --disable-check --disable-dmalloc

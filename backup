@@ -1,0 +1,19 @@
+#!/bin/bash
+
+#
+# Backup Crossfire server
+#
+# Robert Brockway
+# Oct 28, 2015
+#
+
+#
+# Initialise
+#
+DATE=$(date +%s)
+
+#
+# Main
+#
+cd /home/cfserv
+tar cJf ~/backups/crossfire.prod.$DATE.tar.xz /srv/fs2/services/cfserv/prod/

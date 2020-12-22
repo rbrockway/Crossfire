@@ -1,0 +1,36 @@
+#!/bin/bash
+
+# http://stackoverflow.com/questions/5187560/create-image-from-file-containing-all-points-imagemagick
+
+#
+# Config
+#
+CUTOFF=-26000
+
+#
+# Initialise
+#
+MAPBASE="/srv/fs2/services/cfserv/code/maps/trunk/worlds/quadra/"
+COORDFILE=/tmp/crossfire_world_map_coords.$$
+IMAGEFILE=/tmp/crossfire_world_map_image.$$.png
+
+
+for I in $(seq -w 000 999)
+do
+	echo "Processing row $I"
+	# $1: Map Base
+	# $2: Map Row number
+	# $3: Cutoff
+	# $4: Coordinate file
+	make_world_map_row $MAPBASE $I $CUTOFF $COORDFILE 2> /dev/null
+done
+
+convert -size 1000x1000 xc:white $IMAGEFILE
+
+for I in $COORDFILE.*
+do
+        POINTS=$(cat $I | sed -r -e "s/\(//g" -e "s/\)//g" -e "s/^([0-9]{3}),([0-9]{3})$/point \2,\1/g")
+        convert $IMAGEFILE -draw "$POINTS" $IMAGEFILE
+done
+
+echo "Image file is $IMAGEFILE"

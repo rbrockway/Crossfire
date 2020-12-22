@@ -1,0 +1,194 @@
+#!/bin/bash
+
+#
+# Robert Brockway
+# December 14, 2016
+#
+# $1: type (templeOfGorokh)
+# $2: maximum number that can be placed (1)
+# $3: x box start (0)
+# $4: y box start (0)
+# $5: x box size (999)
+# $6: y box size (999)
+#
+# The box is the set of maps may be modified by this script.
+# This allows for random placements in specific geographical regions as well as
+# limiting some to certain latitudes.
+#
+# All parameters are optional.  Defaults are specified in brackets above.
+#
+
+#
+# Config
+#
+MAPBASE=/home/cfserv/code/maps/trunk
+
+#
+# Functions
+#
+
+# error
+error()
+{
+	case $1 in
+	10)
+		echo "Unknown type"
+		;;
+	21)
+		echo "Please specify chance"
+		;;
+	22)
+		echo "Please specify type"
+		;;
+	23)
+		echo "Please specify x box start"
+		;;
+	24)
+		echo "Please specify y box start"
+		;;
+	25)
+		echo "Please specify x box size"
+		;;
+	26)
+		echo "Please specify x box size"
+		;;
+	31)
+		echo "X Centre is less than zero"
+		;;
+	32)
+		echo "X Centre is greater than 999"
+		;;
+	33)
+		echo "Y Centre is less than zero"
+		;;
+	34)
+		echo "Y Centre is greater than 999"
+		;;
+	*)
+		echo "Unknown error"
+		;;
+	esac
+	exit $1 
+}
+
+#
+# Functions
+#
+
+# templeOfGorokh
+templeOfGorokh()
+{
+	cp $MAP $MAP.$DATESTAMP
+	echo "arch gorokh_temple" >> $MAP
+	iecho "slaying gorokh" >> $MAP
+	echo "x $XMAP" >> $MAP
+	echo "y $YMAP" >> $MAP
+	echo "end" >> $MAP
+}
+
+#
+# Main
+#
+
+if [ ! -f ~/quadra_maps ]
+then
+	mkdir ~/quadra_maps
+fi
+
+# Needed for tmp files
+TIMESTAMP=$(date +%s)
+
+case $1 in
+"")
+	TYPE=templeOfGorokh
+	;;
+*)
+	TYPE=$1
+	;;
+esac
+
+case $2 in
+"")
+	MAXIMUM=1
+	;;
+*)
+	MAXIMUM=$2
+	;;
+esac
+
+case $3 in
+"")
+	XBOXSTART=0
+	;;
+*)
+	XBOXSTART=$2
+	;;
+esac
+
+case $4 in
+"")
+	YBOXSTART=0
+	;;
+*)
+	YBOXSTART=$3
+	;;
+esac
+
+case $5 in
+"")
+	XBOXSIZE=999
+	;;
+*)
+	XBOXSIZE=$4
+	;;
+esac
+
+case $6 in
+"")
+	YBOXSIZE=999
+	;;
+*)
+	YBOXSIZE=$5
+	;;
+esac
+
+DATESTAMP=$(date +%s)
+
+XMAP=$(( (( $RANDOM % $XBOXSIZE )) + $XBOXSTART ))
+YMAP=$(( (( $RANDOM % $YBOXSIZE )) + $YBOXSTART ))
+
+MAP=$MAPBASE/worlds/quadra/$(printf "%03d\n" $XMAP)/$(printf "%03d\n" $YMAP)/tile
+
+if [ $XMAP -lt 0 ]
+then
+	error 31
+fi
+
+if [ $XMAP -gt 999 ]
+then
+	error 32
+fi
+
+if [ $YMAP -lt 0 ]
+then
+	error 33
+fi
+
+if [ $YMAP -gt 999 ]
+then
+	error 34
+fi
+
+XCELL=echo $(( $RANDOM % 50 ))
+YCELL=echo $(( $RANDOM % 50 ))
+
+CELLCONTENTS=$(cat $MAP | grep -C2 "x $XCELL" | grep -A50 "y $YCELL" | grep -m1 arch | cut -f 2 -d " "
+
+case $TYPE in
+templeOfGorokh)
+	templeOfGorokh
+	;;
+*)
+	error 10
+	;;
+esac

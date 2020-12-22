@@ -1,0 +1,109 @@
+#!/bin/bash
+
+#
+# Robert Brockway
+#
+# Oct 21, 2016
+#
+# $1: X start map
+# $2: Y start map
+# $3: Direction (east or south)
+# $4: Number of maps in that direction
+# $5: Width of road (will default to 1) - If this is zero the script performs a dry run
+#
+# Currently roads only appear in cells 24 or 24 & 25.  Later this will be configurable
+#
+
+#
+# Initialise
+#
+
+# Timestamp used for backups
+TIMESTAMP=$(date +%s)
+
+# Base of all maps in Quadra
+QUADRABASE=/home/cfserv/code/maps/trunk/worlds/quadra
+
+# What we are replacing terrain with
+ROADARCH="arch cobblestones"
+
+#
+# Functions
+#
+
+# makeRoadOnMap
+makeRoadOnMap()
+{
+	# $1: X Coordinate of tile
+	# $2: Y Coordinate of tile
+	# $3: Direction (east or south)
+	# $4: Width of road
+
+	echo "Making road running $3 on map $1,$2"
+
+	OLDMAP=tile.$TIMESTAMP
+
+	cd $QUADRABASE/$1/$2
+
+	cp tile $OLDMAP
+
+	#perl -0pe 's/.*\n(.*$MATCH)/$ROADARCH\n\1/g' $OLDMAP > tile
+	#perl -0pe 's/.*\n(.*x $5)/arch cobblestones\n\1/g' $OLDMAP > tile
+	case $4 in
+	0)
+		echo "Dry run - would produce an road $3 on Quadra map $1,$2"
+		;;
+	1)
+		case $3 in
+		south)
+			perl -0pe 's/.*\n(.*x 24)/arch cobblestones\n\1/g' $OLDMAP > tile
+			;;
+		east)
+			perl -0pe 's/.*\n(.*\n)(.*y 24)/arch cobblestones\n\1\2/g' $OLDMAP > tile
+			;;
+		esac
+
+		;;
+	2)
+		case $3 in
+		south)
+			perl -0pe 's/.*\n(.*x 24)/arch cobblestones\n\1/g;s/.*\n(.*x 25)/arch cobblestones\n\1/g' $OLDMAP > tile
+			;;
+		east)
+			perl -0pe 's/.*\n(.*\n)(.*y 24)/arch cobblestones\n\1\2/g;s/.*\n(.*\n)(.*y 25)/arch cobblestones\n\1\2/g' $OLDMAP > tile
+			;;
+		esac
+		;;
+	*)
+		echo "please specify a road width of 0, 1 or 2"
+		exit 10
+		;;
+	esac
+
+	# Archive old map
+	xz -9 $OLDMAP
+}
+
+#
+# Main
+#
+
+case $3 in
+east)
+	FIRST=$1
+	LAST=$(($1+$4))
+	for I in $(seq $FIRST $LAST)
+	do
+		makeRoadOnMap $I $2 $3 $5
+	done
+	;;
+south)
+	FIRST=$2
+	LAST=$(($2+$4))
+	for J in $(seq $FIRST $LAST)
+	do
+		makeRoadOnMap $1 $J $3 $5
+	done
+	;;
+esac
+

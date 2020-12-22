@@ -1,0 +1,45 @@
+#!/bin/bash -u
+
+#
+# Initialise
+#
+#TIMESTAMP=$(date +%s)
+#TEMPFILE=/tmp/graphworld.$TIMESTAMP.$$
+TEMPFILE=/tmp/graphworld.tmp
+IMAGEFILE=/tmp/graphworld.png
+
+#
+# Main
+#
+
+if [ ! -f $TEMPFILE ]
+then
+	>$TEMPFILE
+fi
+
+#if [ $(find $TEMPFILE -mmin +30) ]
+#then
+	>$TEMPFILE
+	for I in $(echo ~/code/maps/trunk/world/world_*)
+	do
+		XCOORD=$(echo $I | cut -f 2 -d _)
+		YCOORD=$(echo $I | cut -f 3 -d _)
+		echo $XCOORD $YCOORD >> $TEMPFILE
+	done
+#fi
+
+gnuplot <<- EOF
+	set term png medium
+	set output "$IMAGEFILE"
+	set title "Crossfire World"
+	set grid
+	set xlabel "<--- X --->"
+	set ylabel "<--- Y --->"
+	set size ratio 1
+	set timestamp
+	set yrange [0:999] reverse nowriteback
+	#plot [0:999] [0:999] '/tmp/graphworld.1451545177.3554' with points lt 3 pt 0
+	plot [0:999] [0:999] '$TEMPFILE' with points lt 3 pt 0
+EOF
+
+xview $IMAGEFILE

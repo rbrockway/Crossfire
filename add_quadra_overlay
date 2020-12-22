@@ -1,0 +1,666 @@
+#!/bin/bash
+
+#
+# Robert Brockway
+# September 5, 2016
+#
+# $1: percentage chance of occurrence (5)
+# $2: type (weather)
+# $3: x box start (0)
+# $4: y box start (0)
+# $5: x box size (999)
+# $6: y box size (999)
+# $7: minimum range (0)
+# $8: maximum range (0)
+# $9: special (default is type specific)
+#
+# The box is the set of tiles that the central overlay tile may be placed in.
+# This allows for random overlay placements in specific geographical regions as well as
+# limiting some to certain latitudes.
+#
+# Range indicate the number of squared beyond the centre that overlays are placed.  Since
+# the random number is applied separately for x and y this can be a square or a rectangle.
+# This square or rectangle will not have overlays that are outside the box.
+#
+# All parameters are optional.  Defaults are specified in brackets above.
+#
+# Leaving the last three parameters at default will result in a single element on a single tile.
+# This is suitable for mysterious towers and similar objects
+#
+# Some types ignore the range
+#
+
+#
+# Config
+#
+MAPBASE=/home/cfserv/code/maps/trunk
+OVERLAYBASE=/home/cfserv/prod/var/crossfire/maps
+
+#
+# Functions
+#
+
+# error
+error()
+{
+	case $1 in
+	10)
+		echo "Unknown type"
+		;;
+	21)
+		echo "Please specify chance"
+		;;
+	22)
+		echo "Please specify type"
+		;;
+	23)
+		echo "Please specify x box start"
+		;;
+	24)
+		echo "Please specify y box start"
+		;;
+	25)
+		echo "Please specify x box size"
+		;;
+	26)
+		echo "Please specify x box size"
+		;;
+	27)
+		echo "Please specify minimum range"
+		;;
+	28)
+		echo "Please specify maximum range"
+		;;
+	31)
+		echo "X Centre is less than zero"
+		;;
+	32)
+		echo "X Centre is greater than 999"
+		;;
+	33)
+		echo "Y Centre is less than zero"
+		;;
+	34)
+		echo "Y Centre is greater than 999"
+		;;
+	*)
+		echo "Unknown error"
+		;;
+	esac
+	exit $1 
+}
+
+# hellmouth
+hellmouth()
+{
+	case $1 in
+	"")
+		DENSITY=1
+		;;
+	*)
+		DENSITY=$1
+		;;
+	esac
+
+	for I in $(seq $XRANGEMIN $XRANGEMAX)
+	do
+		for J in $(seq $YRANGEMIN $YRANGEMAX)
+		do
+			# Reset for each tile
+			DEPLOYOVERLAY=no
+
+			MAP=$MAPBASE/worlds/quadra/$(printf "%03d\n" $I)/$(printf "%03d\n" $J)/tile
+			OVERLAY=$OVERLAYBASE/worlds/quadra/$I/$J/tile
+			OVERLAYTMP=$OVERLAYBASE/add_quadra_overlay.tmp
+
+			echo "arch map" >$OVERLAYTMP
+			echo "name world_$I_$J" >>$OVERLAYTMP
+			echo "difficulty 1" >>$OVERLAYTMP
+			echo "width 50" >>$OVERLAYTMP
+			echo "height 50" >>$OVERLAYTMP
+			echo "outdoor 1" >>$OVERLAYTMP
+			echo "end" >>$OVERLAYTMP
+
+			for K in $(seq $DENSITY)
+			do
+				XCELL=$(( $RANDOM % 50 ))
+				YCELL=$(( $RANDOM % 50 ))
+				# We need the first incidence of elevation only
+				# If a cell has no elevation buts its neighbour does that will be used
+				CELLELEVATION=$(cat $MAP | grep -C2 "x $XCELL" | grep -A50 "y $YCELL" | grep -m1 elevation | cut -d " " -f 2)
+				#echo "Elevation ="  $CELLELEVATION
+				if [ $CELLELEVATION -gt 0 ]
+				then
+					if [ $CELLELEVATION -lt 16000 ]
+					then
+						echo "Adding devil on tile $I,$J"
+						echo "arch devil" >>$OVERLAYTMP
+						echo "x $XCELL" >>$OVERLAYTMP
+						echo "y $YCELL" >>$OVERLAYTMP
+						echo "end" >>$OVERLAYTMP
+						DEPLOYOVERLAY=yes
+					fi
+				fi
+			done
+
+			echo "first_load $DATESTAMP" >>$OVERLAYTMP
+			echo "end" >>$OVERLAYTMP
+
+			if [ $DEPLOYOVERLAY == yes ]
+			then
+				if [ ! -d $OVERLAYBASE/worlds/quadra/$I/$J ]
+				then
+					mkdir -p $OVERLAYBASE/worlds/quadra/$I/$J
+				fi
+
+				mv $OVERLAYTMP $OVERLAY
+			fi
+		done
+	done
+}
+
+# humidity
+humidity()
+{
+	HUMIDITYTOTAL=0
+	for I in $(seq $XRANGEMIN $XRANGEMAX)
+	do
+		for J in $(seq $YRANGEMIN $YRANGEMAX)
+		do
+			MAP=$MAPBASE/worlds/quadra/$(printf "%03d\n" $I)/$(printf "%03d\n" $J)/tile
+			SEACOUNTFILE=$MAPBASE/worlds/quadra/$(printf "%03d\n" $I)/$(printf "%03d\n" $J)/seacount
+			HUMIDITYFILE=$MAPBASE/worlds/quadra/$(printf "%03d\n" $I)/$(printf "%03d\n" $J)/humidity
+
+			humidityInit
+
+			HUMIDITY=$(cat $HUMIDITYFILE)
+			HUMIDITYTOTAL=$(($HUMIDITYTOTAL+$HUMIDITY))
+		done
+	done
+
+	HUMIDITYAVG=$((HUMIDITYTOTAL/TILECOUNT))
+
+	for I in $(seq $XRANGEMIN $XRANGEMAX)
+	do
+		for J in $(seq $YRANGEMIN $YRANGEMAX)
+		do
+			# cap
+			TEMPERATUREFILE=$MAPBASE/worlds/quadra/$(printf "%03d\n" $I)/$(printf "%03d\n" $J)/temperature
+			if [ -f $TEMPERATUREFILE ]
+			then
+				TEMPERATURE=$(cat $TEMPERATUREFILE)
+
+				if [ $HUMIDITYAVG -gt $TEMPERATURE ]
+				then
+					#echo "    Humidity capped by temperature at $I,$J"
+					HUMIDITYAVG=$TEMPERATURE
+				fi
+			fi
+
+			# boost
+			PRESSUREFILE=$MAPBASE/worlds/quadra/$(printf "%03d\n" $I)/$(printf "%03d\n" $J)/pressure
+			if [ -f $PRESSUREFILE ]
+			then
+				PRESSURE=$(cat $PRESSUREFILE)
+
+				if [ $HUMIDITYAVG -lt $(( 2500 - $PRESSURE )) ]
+				then
+					#echo "    Humidity boosted by lower pressure at $I,$J"
+					HUMIDITYAVG=$PRESSURE
+				fi
+			fi
+
+			HUMIDITYFILE=$MAPBASE/worlds/quadra/$(printf "%03d\n" $I)/$(printf "%03d\n" $J)/humidity
+			echo $HUMIDITYAVG > $HUMIDITYFILE
+		done
+	done
+	# Need to / 25 rather than /2500 * 100 due to BASH integer maths
+	echo "Humidity is $(( $HUMIDITYAVG / 25 ))%"
+}
+
+# humidityInit
+humidityInit()
+{
+	if [ ! -f $SEACOUNTFILE ]
+	then
+		SEACOUNT=$(cat $MAP | grep -i sea | wc -l)
+		echo $SEACOUNT > $SEACOUNTFILE
+	fi
+
+	if [ ! -f $HUMIDITYFILE ]
+	then
+		cp $SEACOUNTFILE $HUMIDITYFILE
+	fi
+}
+
+# pressure
+pressure()
+{
+	# http://www.weatherquestions.com/What_causes_high_pressure.htm
+	PRESSURETOTAL=0
+	for I in $(seq $XRANGEMIN $XRANGEMAX)
+	do
+		for J in $(seq $YRANGEMIN $YRANGEMAX)
+		do
+			ELEVATIONFILE=$MAPBASE/worlds/quadra/$(printf "%03d\n" $I)/$(printf "%03d\n" $J)/elevation
+			PRESSUREFILE=$MAPBASE/worlds/quadra/$(printf "%03d\n" $I)/$(printf "%03d\n" $J)/pressure
+
+			pressureInit
+
+			PRESSURETOTAL=$(($PRESSURETOTAL+$PRESSURE))
+		done
+	done
+
+	PRESSUREAVG=$((PRESSURETOTAL/TILECOUNT))
+
+	for I in $(seq $XRANGEMIN $XRANGEMAX)
+	do
+		for J in $(seq $YRANGEMIN $YRANGEMAX)
+		do
+			# cap
+			HUMIDITYFILE=$MAPBASE/worlds/quadra/$(printf "%03d\n" $I)/$(printf "%03d\n" $J)/humidity
+			if [ -f $HUMIDITYFILE ]
+			then
+				HUMIDITY=$(cat $HUMIDITYFILE)
+
+				if [ $PRESSUREAVG -gt $HUMIDITY ]
+				then
+					#echo "    Pressure capped by humidity at $I,$J"
+					PRESSUREAVG=$HUMIDITY
+				fi
+			fi
+
+			# boost
+			TEMPERATUREFILE=$MAPBASE/worlds/quadra/$(printf "%03d\n" $I)/$(printf "%03d\n" $J)/temperature
+			if [ -f $TEMPERATUREFILE ]
+			then
+				TEMPERATURE=$(cat $TEMPERATUREFILE)
+
+				if [ $PRESSUREAVG -lt $(( 2500 - $TEMPERATURE )) ]
+				then
+					#echo "    Pressure boosted by lower temperature at $I,$J"
+					PRESSUREAVG=$TEMPERATURE
+				fi
+			fi
+
+			PRESSUREFILE=$MAPBASE/worlds/quadra/$(printf "%03d\n" $I)/$(printf "%03d\n" $J)/pressure
+			echo $PRESSUREAVG > $PRESSUREFILE
+		done
+	done
+	echo "Pressure is $(( $(( $PRESSUREAVG / 25 )) + 961 )) millibars"
+}
+
+# pressureInit
+pressureInit()
+{
+	if [ -f $ELEVATIONFILE ]
+	then
+		ELEVATION=$(cat $ELEVATIONFILE)
+	else
+		TILEFILE=$MAPBASE/worlds/quadra/$(printf "%03d\n" $I)/$(printf "%03d\n" $J)/tile
+		# This is cpu intensive so we only do it if the $ELEVATIONFILE doesn't exist
+		ELEVATIONSUM=$(cat $TILEFILE | grep elevation | cut -b 11- | paste -s -d+ | bc)
+		ELEVATION=$((ELEVATIONSUM/2500))
+		echo $ELEVATION > $ELEVATIONFILE
+	fi
+
+	# This is air pressure we're talking about
+	#if [ $ELEVATION -le 0 ]
+	#then
+	#	PRESSURE=1250
+	#else
+	#	# Scaling /32000 * 2500
+	#	PRESSURE=$(( $(( 32000 - $ELEVATION )) / 320 * 25 ))
+	#fi
+
+	# Need to count negative elevations for high pressure systems
+	PRESSURE=$(( $(( 32000 - $ELEVATION )) / 640 * 25 ))
+}
+
+# temperature
+temperature()
+{
+	TEMPERATURETOTAL=0
+	for I in $(seq $XRANGEMIN $XRANGEMAX)
+	do
+		for J in $(seq $YRANGEMIN $YRANGEMAX)
+		do
+			TEMPERATUREFILE=$MAPBASE/worlds/quadra/$(printf "%03d\n" $I)/$(printf "%03d\n" $J)/temperature
+
+			temperatureInit
+
+			TEMPERATURE=$(cat $TEMPERATUREFILE)
+			TEMPERATURETOTAL=$(($TEMPERATURETOTAL+$TEMPERATURE))
+		done
+	done
+
+	TEMPERATUREAVG=$((TEMPERATURETOTAL/TILECOUNT))
+
+	for I in $(seq $XRANGEMIN $XRANGEMAX)
+	do
+		for J in $(seq $YRANGEMIN $YRANGEMAX)
+		do
+			# cap
+			PRESSUREFILE=$MAPBASE/worlds/quadra/$(printf "%03d\n" $I)/$(printf "%03d\n" $J)/pressure
+			if [ -f $PRESSUREFILE ]
+			then
+				PRESSURE=$(cat $PRESSUREFILE)
+
+				if [ $TEMPERATUREAVG -gt $PRESSURE ]
+				then
+					#echo "    Temperature capped by pressure at $I,$J"
+					TEMPERATUREAVG=$PRESSURE
+				fi
+			fi
+
+			# boost
+			HUMIDITYFILE=$MAPBASE/worlds/quadra/$(printf "%03d\n" $I)/$(printf "%03d\n" $J)/humidity
+			if [ -f $HUMIDITYFILE ]
+			then
+				HUMIDITY=$(cat $HUMIDITYFILE)
+
+				if [ $TEMPERATURE -lt $(( 2500 - $HUMIDITY )) ]
+				then
+					#echo "    Temperature boosted by lower humidity at $I,$J"
+					TEMPERATUREAVG=$HUMIDITY
+				fi
+			fi
+
+
+			TEMPERATUREFILE=$MAPBASE/worlds/quadra/$(printf "%03d\n" $I)/$(printf "%03d\n" $J)/temperature
+			echo $TEMPERATUREAVG > $TEMPERATUREFILE
+		done
+	done
+	# Need to / 25 rather than /2500 * 100 due to BASH integer maths
+	echo "Temperature is $(( $(( $TEMPERATUREAVG / 25 )) - 50 ))C"
+}
+
+# temperatureInit
+temperatureInit()
+{
+	if [ ! -f $TEMPERATUREFILE ]
+	then
+		# Hotter closer to the equator (J=500)
+		if [ $J -lt 500 ]
+		then
+			echo $(( $J * 5 )) > $TEMPERATUREFILE
+		else
+			echo $(( $(( 1000 - $J )) * 5 )) > $TEMPERATUREFILE
+		fi
+	fi
+}
+
+# weather
+weather()
+{
+	# Randomise the order of all three components of weather
+
+	RAND=$[$RANDOM % 3]
+	case $RAND in
+	0)
+		humidity
+
+		RAND=$[$RANDOM % 2]
+		case $RAND in
+		0)
+			pressure
+			temperature
+			;;
+		1)
+			temperature
+			pressure
+			;;
+		esac
+		;;
+	1)
+		pressure
+
+		RAND=$[$RANDOM % 2]
+		case $RAND in
+		0)
+			humidity
+			temperature
+			;;
+		1)
+			temperature
+			humidity
+			;;
+		esac
+		;;
+	2)
+		temperature
+
+		RAND=$[$RANDOM % 2]
+		case $RAND in
+		0)
+			humidity
+			pressure
+			;;
+		1)
+			pressure
+			humidity
+			;;
+		esac
+		;;
+	esac
+}
+
+#
+# Main
+#
+
+#
+# Initialise
+#
+
+# Needed for tmp files
+TIMESTAMP=$(date +%s)
+
+case $1 in
+"")
+	CHANCE=5
+	;;
+*)
+	CHANCE=$1
+	;;
+esac
+
+case $2 in
+"")
+	TYPE=weather
+	;;
+*)
+	TYPE=$2
+	;;
+esac
+
+case $3 in
+"")
+	XBOXSTART=0
+	;;
+*)
+	XBOXSTART=$3
+	;;
+esac
+
+case $4 in
+"")
+	YBOXSTART=0
+	;;
+*)
+	YBOXSTART=$4
+	;;
+esac
+
+case $5 in
+"")
+	XBOXSIZE=999
+	;;
+*)
+	XBOXSIZE=$5
+	;;
+esac
+
+case $6 in
+"")
+	YBOXSIZE=999
+	;;
+*)
+	YBOXSIZE=$6
+	;;
+esac
+
+case $7 in
+"")
+	MINRANGE=0
+	;;
+*)
+	MINRANGE=$7
+	;;
+esac
+
+case $8 in
+"")
+	MAXRANGE=0
+	;;
+*)
+	MAXRANGE=$8
+	;;
+esac
+
+ROLL=$(( $RANDOM % 100 ))
+
+
+if [ $ROLL -le $CHANCE ]
+then
+	if [ ! -d $OVERLAYBASE/worlds ]
+	then
+		mkdir $OVERLAYBASE/worlds
+	fi
+
+	if [ ! -d $OVERLAYBASE/worlds/quadra ]
+	then
+		mkdir $OVERLAYBASE/worlds/quadra
+	fi
+
+	DATESTAMP=$(date +%s)
+
+	XCENTRE=$(( (( $RANDOM % $XBOXSIZE )) + $XBOXSTART ))
+	YCENTRE=$(( (( $RANDOM % $YBOXSIZE )) + $YBOXSTART ))
+
+	if [ $XCENTRE -lt 0 ]
+	then
+		error 31
+	fi
+
+	if [ $XCENTRE -gt 999 ]
+	then
+		error 32
+	fi
+
+	if [ $YCENTRE -lt 0 ]
+	then
+		error 33
+	fi
+
+	if [ $YCENTRE -gt 999 ]
+	then
+		error 34
+	fi
+
+	if [ $MAXRANGE -eq $MINRANGE ]
+	then
+		XRANGE=$MAXRANGE
+		YRANGE=$MAXRANGE
+	else
+		XRANGE=$(( (( $RANDOM % (( $MAXRANGE - $MINRANGE )) )) + $MINRANGE ))
+		YRANGE=$(( (( $RANDOM % (( $MAXRANGE - $MINRANGE )) )) + $MINRANGE ))
+	fi
+
+	# Establish the corners of the box
+	XBOXMIN=$XBOXSTART
+	XBOXMAX=$(( $XBOXSTART + $XBOXSIZE ))
+	YBOXMIN=$YBOXSTART
+	YBOXMAX=$(( $YBOXSTART + $YBOXSIZE ))
+
+	XRANGEMIN=$(( $XCENTRE - $XRANGE ))
+	XRANGEMAX=$(( $XCENTRE + $XRANGE ))
+	YRANGEMIN=$(( $YCENTRE - $YRANGE ))
+	YRANGEMAX=$(( $YCENTRE + $YRANGE ))
+
+	#
+	# Make sure the range does not go outside the box
+	#
+	if [ $XRANGEMIN -lt $XBOXMIN ]
+	then
+		XRANGEMIN=$XBOXMIN
+	fi
+
+	XRANGEMAX=$(( $XCENTRE + $XRANGE ))
+
+	if [ $XRANGEMAX -gt $XBOXMAX ]
+	then
+		XRANGEMAX=$XBOXMAX
+	fi
+
+	YRANGEMIN=$(( $YCENTRE - $YRANGE ))
+
+	if [ $YRANGEMIN -lt $YBOXMIN ]
+	then
+		YRANGEMIN=$YBOXMIN
+	fi
+
+	YRANGEMAX=$(( $YCENTRE + $YRANGE ))
+
+	if [ $YRANGEMAX -gt $YBOXMAX ]
+	then
+		YRANGEMAX=$YBOXMAX
+	fi
+
+	TILECOUNT=$(($((XRANGE*2 +1))*$((YRANGE*2 +1))))
+
+	echo "Range is ($XRANGEMIN,$YRANGEMIN) to ($XRANGEMAX,$YRANGEMAX)"
+	
+	case $TYPE in
+	hellmouth)
+		hellmouth $9
+		;;
+	gems)
+		gems
+		;;
+	mice)
+		mice
+		;;
+	portal1)
+		portal1
+		;;
+	portal2)
+		portal2
+		;;
+	rain)
+		echo "Rain"
+		;;
+	mysterioustower)
+		mysterioustower
+		;;
+	humidity)
+		humidity
+		;;
+	pressure)
+		pressure
+		;;
+	temperature)
+		temperature
+		;;
+	weather)
+		weather
+		;;
+	*)
+		error 10
+		;;
+	esac
+else
+	echo "No overlays this time"
+fi
+
+# Clean up any tmp files more than a week old here

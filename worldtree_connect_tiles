@@ -1,0 +1,139 @@
+#!/bin/bash
+
+#
+# Config
+#
+TILENAME=tile
+
+#
+# Functions
+#
+
+error()
+{
+case $1 in
+        20)
+                echo
+                echo "Specified map $THISMAP does not exist"
+                ;;
+        esac
+        echo
+        exit $1
+}
+
+fixpaths()
+{
+        TIMESTAMP=$(date +%s)
+
+        THISMAP=$1
+        if [ ! -f $THISMAP ]
+        then
+                error 20
+        fi
+
+        MAPCLASS=$(realpath $THISMAP | cut -f 6 -d /)
+        XCOORD=$(realpath $THISMAP | cut -f 7 -d /)
+        YCOORD=$(realpath $THISMAP | cut -f 8 -d /)
+
+        # Remove all existing references to adjacent tiles so we know what state the file is in
+        sed -i '/tile_path_1/d' $THISMAP &> /dev/null
+        sed -i '/tile_path_2/d' $THISMAP &> /dev/null
+        sed -i '/tile_path_3/d' $THISMAP &> /dev/null
+        sed -i '/tile_path_4/d' $THISMAP &> /dev/null
+
+        # North
+        if [ $YCOORD -gt 100 ]
+        then
+                ADJACENT1="../../$XCOORD/$(($YCOORD-1))/$TILENAME"
+        fi
+
+        # East
+        if [ $XCOORD -le 999 ]
+        then
+                ADJACENT2="../../$(($XCOORD+1))/$YCOORD/$TILENAME"
+        fi
+
+        # South
+        if [ $YCOORD -le 999 ]
+        then
+                ADJACENT3="../../$XCOORD/$(($YCOORD+1))/$TILENAME"
+        fi
+
+        # West
+        if [ $XCOORD -gt 100 ]
+        then
+                ADJACENT4="../../$(($XCOORD-1))/$YCOORD/$TILENAME"
+        fi
+
+        if [ -f $ADJACENT4 ]
+        then
+                sed -i "/outdoor 1/a tile_path_4 $ADJACENT4" $THISMAP &> /dev/null
+        else
+                echo "tile_path_4 not being added as $ADJACENT4 does not exist"
+        fi
+
+        if [ -f $ADJACENT3 ]
+        then
+                sed -i "/outdoor 1/a tile_path_3 $ADJACENT3" $THISMAP &> /dev/null
+        else
+                echo "tile_path_3 not being added as $ADJACENT3 does not exist"
+        fi
+
+        if [ -f $ADJACENT2 ]
+        then
+                sed -i "/outdoor 1/a tile_path_2 $ADJACENT2" $THISMAP &> /dev/null
+        else
+                echo "tile_path_2 not being added as $ADJACENT2 does not exist"
+        fi
+
+        if [ -f $ADJACENT1 ]
+        then
+                sed -i "/outdoor 1/a tile_path_1 $ADJACENT1" $THISMAP &> /dev/null
+        else
+                echo "tile_path_1 not being added as $ADJACENT1 does not exist"
+        fi
+}
+
+#
+# Main
+#
+echo
+echo "Fixing tile paths for the worldtree - $(date)"
+for X in $(seq -w 100 999)
+do
+	if [ ! -d $X ]
+	then
+		mkdir $X
+	fi
+	if [ -d $X ]
+	then
+		cd $X
+		for Y in $(seq -w 100 999)
+		do
+			if [ ! -d $Y ]
+			then
+				mkdir $Y
+			fi
+
+			if [ -d $Y ]
+			then
+				cd $Y
+				if [ -f $TILENAME ]
+				then
+					#echo "Processing map $X/$Y/$TILENAME"
+					fix_tile_paths_worldtree $TILENAME
+					fixpaths $TILENAME
+				else
+					echo "file $TILENAME does not exist"
+				fi
+				cd ..
+			else
+				echo "Column $Y does not exist"
+			fi
+		done
+		cd ..
+	else
+		echo "Row $X does not exist"
+	fi
+	echo "*** Row $X complete - $(date) ***"
+done

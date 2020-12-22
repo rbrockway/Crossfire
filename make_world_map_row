@@ -1,0 +1,42 @@
+#!/bin/bash
+
+#
+# Process one row of the map
+#
+# $1: Map Base
+# $2: Map Row number
+# $3: Cutoff
+# $4: Coordinate file
+#
+
+#
+# Initialise
+#
+
+MAPBASE=$1
+ROWNUM=$2
+CUTOFF=$3
+COORDFILE=$4
+
+ELEVATIONAVGFILE=elevation
+
+for J in $(seq -w 000 999)
+do
+	cd $MAPBASE/$ROWNUM/$J
+	if [ -f $ELEVATIONAVGFILE ]
+	then
+		#echo "Average elevation for $ROWNUM/$J already available"
+		ELEVATIONAVG=$(cat $ELEVATIONAVGFILE)
+	else
+		#echo "Computing average elevation for $ROWNUM/$J"
+		# This is cpu intensive so we only do it if the $ELEVATIONAVGFILE doesn't exist
+		ELEVATIONSUM=$(cat tile | grep elevation | cut -b 11- | paste -s -d+ | bc)
+		ELEVATIONAVG=$((ELEVATIONSUM/2500))
+		echo $ELEVATIONAVG > $ELEVATIONAVGFILE
+	fi
+
+	if [ $ELEVATIONAVG -ge $CUTOFF ]
+	then
+		echo "($ROWNUM,$J)" >> $COORDFILE.$ROWNUM
+	fi
+done
